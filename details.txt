@@ -1,0 +1,11 @@
+Objective :-
+
+launching data driven campaign
+advertising channel -youtube
+question:- how to categorise video,based on their comments and statistics
+	   what factor affects how popular a youtube video will be
+
+What is a medallion architecture?
+
+
+glacier bucket -old data not in used frequent
