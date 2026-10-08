@@ -8,4 +8,6 @@ question:- how to categorise video,based on their comments and statistics
 What is a medallion architecture?
 
 
-glacier bucket -old data not in used frequent
+glacier bucket -old data not in used frequent\
+
+dataset- contain 10 region specific data
