@@ -3,9 +3,10 @@ Silver bucket - yt-data-silver-europe
 Gold bucket - yt-data-gold-europe
 
 
-glue bronze-
-glue silver- 
-glue gold-
+glue bronze-yt-pipeline-bronze
+glue silver- yt-pipeline-silver
+glue gold-yt-pipeline-gold
+
 Scripts bucket- yt-data-script-europe
 
 sns arn - arn:aws:sns:eu-north-1:785823254033:yt-data-pipeline-alerts:e8d5fb74-d4c3-413a-ac6f-3a2baefedad5

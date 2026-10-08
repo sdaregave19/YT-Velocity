@@ -1,3 +1,23 @@
+"""
+Lambda: JSON Reference Data → Silver Layer (Parquet)
+────────────────────────────────────────────────────
+Triggered by S3 event when new JSON lands in the Bronze bucket
+under the reference_data prefix.
+
+Improvements over original:
+  - Data validation before writing
+  - Deduplication of category records
+  - Proper error handling with dead-letter alerting
+  - Idempotent writes (overwrites partition, not append)
+  - Structured logging
+
+Environment Variables:
+    S3_BUCKET_SILVER            — Target bucket for cleansed data
+    GLUE_DB_SILVER              — Glue catalog database name
+    GLUE_TABLE_REFERENCE        — Glue catalog table name
+    SNS_ALERT_TOPIC_ARN         — SNS topic for alerts (optional)
+"""
+
 import json
 import os
 import logging
