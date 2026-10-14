@@ -34,3 +34,13 @@ aws s3 cp KR_category_id.json s3://yt-data-bronze-europe/youtube/youtube/raw_sta
 aws s3 cp MX_category_id.json s3://yt-data-bronze-europe/youtube/youtube/raw_statistics_reference_data/region=mx/
 aws s3 cp RU_category_id.json s3://yt-data-bronze-europe/youtube/youtube/raw_statistics_reference_data/region=ru/
 aws s3 cp US_category_id.json s3://yt-data-bronze-europe/youtube/youtube/raw_statistics_reference_data/region=us/
+
+
+ --bronze_database           yt-pipeline-bronze
+    --bronze_table           raw_statistics
+    --silver_bucket          yt-data-silver-europe
+    --silver_database        yt-pipeline-silver
+    --silver_table           clean_statistics
+  
+
+  2:48
