@@ -21,3 +21,10 @@ Read selected columns	Usually parses JSON records	Can read only required columns
 Compression	Depends on how it's stored	Supports efficient compression
 SQL analytics with Athena	Possible, but often requires parsing more data	Well suited to analytical queries
 Schema and data types	Flexible; often inferred	Stores schema and typed column data
+
+
+
+gold layer has :-
+					category_analytics/
+					channel_analytics/
+					trending_analytics/

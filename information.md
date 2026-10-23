@@ -44,3 +44,9 @@ aws s3 cp US_category_id.json s3://yt-data-bronze-europe/youtube/youtube/raw_sta
   
 
   2:48
+
+
+   --JOB_NAME              — Glue job name
+    --silver_database        yt-pipeline-silver
+    --gold_bucket           yt-data-gold-europe  
+    --gold_database        yt-pipeline-gold
