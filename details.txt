@@ -24,7 +24,14 @@ Schema and data types	Flexible; often inferred	Stores schema and typed column da
 
 
 
+
+sql query pic form 3:05:00
+
+
 gold layer has :-
 					category_analytics/
 					channel_analytics/
 					trending_analytics/
+
+
+
