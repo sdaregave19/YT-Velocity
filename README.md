@@ -1,7 +1,7 @@
 # YouTube Data Engineering Pipeline on AWS
 ## Architecture
 
-![YouTube Trending Data Pipeline](images/youtube-data-pipeline.png)
+![YouTube Trending Data Pipeline](youtube-data-pipeline.png)
 
 An end-to-end data engineering project that processes YouTube trending video data across 10 regions using AWS services. The pipeline uses Medallion Architecture to organize raw and processed data and enables SQL analytics using Amazon Athena.
 
