@@ -1,224 +1,164 @@
-# YouTube Data Engineering Pipeline on AWS
+## Data Flow
 
-An end-to-end data engineering project that processes YouTube trending video data across 10 regions using AWS services. The pipeline uses Medallion Architecture to organize raw and processed data and enables SQL analytics using Amazon Athena.
-
-## Table of Contents
-- [Project Overview](#project-overview)
-- [Business Objective](#business-objective)
-- [Architecture](#architecture)
-- [Technology Stack](#technology-stack)
-- [Data Pipeline Workflow](#data-pipeline-workflow)
-- [Medallion Architecture](#medallion-architecture)
-- [Why Parquet Instead of JSON?](#why-parquet-instead-of-json)
-- [Amazon S3 Glacier](#amazon-s3-glacier)
-- [Analytics and Business Insights](#analytics-and-business-insights)
-- [Key Learnings](#key-learnings)
-
-## Project Overview
-
-This project demonstrates how AWS cloud services can build an automated data pipeline for YouTube analytics. Region-specific datasets are stored in Amazon S3, processed using AWS Lambda and AWS Glue, orchestrated through AWS Step Functions, and queried using Amazon Athena.
-
-## Business Objective
-
-### Problem Statement
-
-The goal is to support **data-driven advertising campaigns on YouTube** by understanding video popularity and performance.
-
-Key questions:
-1. How can videos be categorized using comments, statistics, and other attributes?
-2. Which factors are associated with video popularity, including views, likes, comments, and category?
-3. How does video performance differ across regions?
-4. How can these insights guide advertising campaign decisions?
-
-The pipeline prepares structured data for analysis. Identifying causal effects on popularity requires additional statistical analysis or machine learning.
-
-## Architecture
+The pipeline follows a Medallion Architecture with three layers: Bronze (raw data), Silver (cleansed data), and Gold (business-ready analytics). AWS Step Functions orchestrates the workflow, while Lambda and AWS Glue handle ingestion, transformation, validation, and aggregation.
 
 ```mermaid
 flowchart TD
-    A["YouTube Dataset<br/>10 Regions"] --> B["Amazon S3<br/>Bronze Layer<br/>Raw CSV / JSON"]
-    B --> C["AWS Step Functions<br/>Workflow Orchestration"]
-    C --> D["AWS Lambda<br/>Data Transformation"]
-    C --> E["AWS Glue ETL<br/>Data Processing"]
-    D --> F["Amazon S3<br/>Silver Layer<br/>Parquet"]
-    E --> F
-    F --> G["AWS Glue Data Catalog"]
-    G --> H["Amazon Athena<br/>SQL Analytics"]
-    H --> I["Business Insights<br/>Categories, Engagement<br/>and Regional Trends"]
-    B -. "Lifecycle archival" .-> J["S3 Glacier Storage Class"]
+    A["YouTube Data API v3"] --> B["youtube_api_integstion"]
+    C["Historical Kaggle CSV"] --> D["aws_copy.sh"]
+    B --> E["Amazon S3 — Bronze"]
+    D --> E
+    E --> F["bronze_to_silver_statistics<br/>AWS Glue"]
+    E --> G["json_to_parquet<br/>AWS Lambda"]
+    F --> H["Amazon S3 — Silver Statistics"]
+    G --> I["Amazon S3 — Silver Reference Data"]
+    H --> J["dq_lambda<br/>Data Quality Gate"]
+    I --> J
+    J -->|Pass| K["silver_to_gold_analytics<br/>AWS Glue"]
+    J -->|Fail| L["Amazon SNS Alert"]
+    K --> M["Gold: trending_analytics"]
+    K --> N["Gold: channel_analytics"]
+    K --> O["Gold: category_analytics"]
+    M --> P["AWS Glue Data Catalog"]
+    N --> P
+    O --> P
+    P --> Q["Amazon Athena"]
 ```
 
-## Technology Stack
+### Bronze Layer (Raw Data)
 
-| Component | Technology |
+The ingestion Lambda (`youtube_api_integstion`) fetches data from the YouTube Data API v3.
+
+- **Trending videos:** Top 50 trending videos per region.
+- **Category mappings:** Video category ID-to-name reference data.
+- **Historical data:** Kaggle CSV datasets uploaded through the `aws_copy.sh` script.
+
+Raw JSON data is stored in Amazon S3, organized by region, date, and hour where applicable.
+
+Example S3 paths:
+
+```text
+s3://bronze-bucket/youtube/raw_statistics/region=US/date=2026-04-01/hour=12/
+s3://bronze-bucket/youtube/raw_statistics_reference_data/region=US/
+```
+
+The Bronze layer preserves source data for auditing and reprocessing.
+
+### Silver Layer (Cleansed Data)
+
+Two transformations process Bronze data.
+
+#### 1. Statistics — AWS Glue Job: `bronze_to_silver_statistics`
+
+This job standardizes YouTube statistics from API JSON and historical Kaggle CSV datasets.
+
+- Enforces a consistent schema across supported input formats.
+- Casts numerical fields such as views and likes to appropriate integer types.
+- Parses trending dates into consistent date values.
+- Handles null values and standardizes region identifiers.
+- Removes duplicates, retaining the latest record per video, region, and date.
+- Calculates derived metrics such as `like_ratio` and `engagement_rate`.
+- Writes cleansed data in Parquet format with Snappy compression, partitioned by region.
+
+#### 2. Reference Data — AWS Lambda: `json_to_parquet`
+
+This Lambda function processes video category reference JSON files.
+
+- Normalizes category mappings into tabular data.
+- Deduplicates category entries.
+- Converts JSON to Parquet format.
+- Writes the processed reference data to the Silver layer, partitioned by region.
+
+### Data Quality Gate
+
+Before Gold aggregation, the Data Quality Lambda (`dq_lambda`) validates the Silver datasets.
+
+| Check | Validation Rule |
 |---|---|
-| Cloud Platform | AWS |
-| Data Storage | Amazon S3 |
-| Serverless Processing | AWS Lambda |
-| ETL | AWS Glue |
-| Orchestration | AWS Step Functions |
-| Metadata | AWS Glue Data Catalog |
-| SQL Analytics | Amazon Athena |
-| Language | Python |
-| Data Formats | CSV, JSON, Parquet |
-| Libraries | Boto3, AWS Data Wrangler |
-| Architecture | Medallion Architecture |
+| Row count | At least 10 rows |
+| Null percentage | No more than 5% in critical columns |
+| Schema validation | Required columns are present |
+| Value ranges | Sanity checks on view counts |
+| Data freshness | Latest data is less than 48 hours old |
 
-## Data Pipeline Workflow
+**On success:** The workflow continues to the Gold aggregation job.
 
-### 1. Data Ingestion — Bronze
-- Collect region-specific YouTube datasets from 10 regions.
-- Store raw CSV and JSON files in Amazon S3.
-- Preserve source data for reprocessing and auditing.
+**On failure:** The pipeline halts the Gold processing path and sends an Amazon SNS alert containing failure details.
 
-### 2. Workflow Orchestration
-AWS Step Functions coordinates processing tasks, manages execution order, and supports monitoring, retries, and error handling when configured.
+These thresholds represent the configured validation rules and should match the actual Lambda implementation.
 
-### 3. Data Transformation
-AWS Lambda and AWS Glue perform appropriate transformations:
-- Read source files from S3.
-- Normalize JSON records.
-- Standardize fields and data types.
-- Convert suitable datasets into Parquet.
-- Write processed files to the Silver layer.
+### Gold Layer (Business Aggregations)
 
-### 4. Processed Storage — Silver
-Store cleaned and structured datasets in Amazon S3 in Parquet format.
+The AWS Glue job (`silver_to_gold_analytics`) aggregates validated Silver data into three analytics tables for regional, channel-level, and category-level analysis.
 
-Example S3 organization:
+## Gold Layer Output Tables
 
-```text
-s3://yt-data-bronze-europe/
-    youtube/raw_statistics/
+### 1. `trending_analytics`
 
-s3://yt-data-silver-europe/
-    youtube/reference_data/
-        region=in/
-            part-00000.parquet
-```
+Daily trending metrics aggregated by region and trending date.
 
-Adjust paths to match your actual bucket structure.
+| Column | Description |
+|---|---|
+| `region` | Country code, such as US, GB, or IN |
+| `trending_date_parsed` | Date of the trending snapshot |
+| `total_videos` | Number of trending videos |
+| `total_views` | Sum of views |
+| `total_likes` | Sum of likes |
+| `avg_views_per_video` | Average views per trending video |
+| `avg_like_ratio` | Average like-to-view ratio |
+| `avg_engagement_rate` | Average engagement rate |
+| `unique_channels` | Number of distinct channels |
+| `unique_categories` | Number of distinct categories |
 
-### 5. Metadata and Analytics
-AWS Glue Data Catalog maintains table schemas and metadata. Amazon Athena uses SQL to query the processed data directly from S3.
+**Use case:** Compare trending activity and engagement across regions and dates.
 
-Example query:
+### 2. `channel_analytics`
 
-```sql
-SELECT region, COUNT(*) AS total_records
-FROM youtube_reference_data
-GROUP BY region
-ORDER BY total_records DESC;
-```
+Channel-level performance metrics and regional rankings.
 
-Replace the table and column names with those defined in your Glue Data Catalog.
+| Column | Description |
+|---|---|
+| `channel_title` | YouTube channel name |
+| `region` | Country code |
+| `total_videos` | Number of videos that trended |
+| `total_views` | Total views across trending videos |
+| `avg_engagement_rate` | Average engagement rate |
+| `times_trending` | Number of trending appearances |
+| `rank_in_region` | Performance rank within the region |
+| `categories` | Categories associated with the channel |
 
-## Medallion Architecture
+**Use case:** Identify channels with strong trending performance and compare channel metrics within each region.
 
-Medallion Architecture organizes data into three layers.
+### 3. `category_analytics`
 
-### Bronze Layer — Raw Data
-- Stores original CSV and JSON files.
-- Preserves source data.
-- Supports future reprocessing.
+Category-level performance and share of total views.
 
-### Silver Layer — Cleaned Data
-- Normalizes JSON records.
-- Standardizes schemas and data types.
-- Handles missing or inconsistent values where required.
-- Stores structured datasets in Parquet format.
+| Column | Description |
+|---|---|
+| `category` | Video category name |
+| `region` | Country code |
+| `trending_date_parsed` | Date of the trending snapshot |
+| `video_count` | Number of videos in the category |
+| `total_views` | Total views for the category |
+| `avg_engagement_rate` | Average engagement rate |
+| `view_share_pct` | Percentage of total views attributed to the category |
 
-### Gold Layer — Analytics-Ready Data
-Potential business-focused datasets include:
-- Video performance and engagement metrics.
-- Category-level popularity analysis.
-- Regional performance comparisons.
-- Features for investigating factors associated with popularity.
+**Use case:** Compare category performance and identify categories with a high share of trending-video views.
 
-The Gold layer should be implemented before claiming these outputs are available.
+### Gold Storage and Querying
 
-## Why Parquet Instead of JSON?
+All Gold tables are stored in Parquet format with Snappy compression, partitioned by region, and registered in the AWS Glue Data Catalog for querying through Amazon Athena.
 
-| Feature | JSON | Parquet |
-|---|---|---|
-| File size | 7.9 KB | 7.1 KB |
-| Format | Text-based | Binary, columnar |
-| Human-readable | Yes | Requires a compatible tool |
-| Selected-column reads | Usually parses JSON records | Reads only required columns |
-| Compression | Depends on encoding and storage | Supports efficient compression |
-| Athena analytics | Supported, but may parse more data | Well suited to analytical queries |
-| Schema and types | Flexible; often inferred | Stores schema and typed columns |
+The Gold layer enables SQL-based analysis without repeatedly processing the raw Bronze datasets.
 
-### Why Parquet Is Useful
+## Business Questions and Analytics
 
-**1. Columnar storage:** Analytical queries can read only the required columns.
+The Gold tables support the project's objective of making YouTube advertising decisions more data-driven.
 
-**2. Query performance:** Column pruning and compression can reduce the data scanned for suitable workloads.
+- **Regional trends:** Which regions have the highest trending-video activity?
+- **Channel performance:** Which channels appear frequently in trending results?
+- **Category performance:** Which categories account for the largest share of views?
+- **Engagement:** How do likes and comments relate to video views?
+- **Campaign planning:** Which categories and regional trends merit further investigation for advertising opportunities?
 
-**3. Compression:** Parquet supports codecs such as Snappy, reducing storage requirements in many cases.
-
-**4. Schema support:** Stores column types and schema information for structured processing.
-
-**5. Athena cost optimization:** On-demand Athena queries are generally charged according to data scanned. Parquet can reduce scanning and costs for analytical workloads.
-
-**Conclusion:** The file size decreases from 7.9 KB to 7.1 KB, approximately 10.1%. The size reduction is small, but Parquet is valuable because of its columnar layout, compression, schema support, and suitability for analytical queries. Benefits become more significant with larger datasets.
-
-## Amazon S3 Glacier
-
-Amazon S3 Glacier storage classes are designed for long-term data retention when data is accessed infrequently.
-
-Benefits:
-- Lower storage costs for suitable archival workloads.
-- Retention of historical datasets.
-- Lifecycle management of older data.
-- Separation of frequently queried data from archival data.
-
-Example lifecycle:
-
-```text
-New Data
-   |
-   v
-S3 Standard
-   |
-   v
-S3 Lifecycle Rule
-   |
-   v
-Glacier Storage Class
-```
-
-Choose the storage class according to retention needs and acceptable retrieval delays. Older data does not automatically move to Glacier unless a lifecycle rule or another archival process is configured.
-
-## Analytics and Business Insights
-
-The processed data can support analysis of:
-- Video categories with high average views.
-- Regional engagement differences.
-- Relationships between views, likes, and comments.
-- Channel performance and trending patterns.
-- Characteristics that may help guide advertising campaigns.
-
-Example engagement metric:
-
-```text
-Engagement Rate (%) =
-((Likes + Comments) / Views) * 100
-```
-
-This is one possible definition. It measures observed engagement, not the causal effect of engagement on popularity.
-
-## Key Learnings
-
-- Building an AWS-based data pipeline.
-- Applying Medallion Architecture.
-- Converting JSON data into Parquet.
-- Managing data and metadata using S3 and AWS Glue.
-- Orchestrating workflows with Step Functions.
-- Querying data using Athena and SQL.
-- Understanding analytical and archival storage trade-offs.
-- Preparing data for regional and category-level YouTube analytics.
-
-## Conclusion
-
-This project demonstrates an AWS-based approach to transforming YouTube datasets from 10 regions into structured data for analytics. Amazon S3, Lambda, Glue, Step Functions, and Athena provide a foundation for data processing and data-driven advertising analysis, while Parquet supports analytical workloads and Glacier storage classes offer long-term archival options.
+These analytics describe patterns in trending-video data. They do not, by themselves, establish that a particular category or engagement metric causes popularity or guarantees advertising success.
