@@ -1,0 +1,37 @@
+Objective :-
+
+launching data driven campaign
+advertising channel -youtube
+question:- how to categorise video,based on their comments and statistics
+	   what factor affects how popular a youtube video will be
+
+What is a medallion architecture?
+
+
+glacier bucket -old data not in used frequent\
+
+dataset- contain 10 region specific data
+
+1.Why use Parquet if the size difference is small?
+Feature	JSON	Parquet
+File size	7.9 KB	7.1 KB
+Format	Text-based	Binary, columnar
+Human-readable	Yes	Requires a tool
+Read selected columns	Usually parses JSON records	Can read only required columns
+Compression	Depends on how it's stored	Supports efficient compression
+SQL analytics with Athena	Possible, but often requires parsing more data	Well suited to analytical queries
+Schema and data types	Flexible; often inferred	Stores schema and typed column data
+
+
+
+
+sql query pic form 3:05:00
+
+
+gold layer has :-
+					category_analytics/
+					channel_analytics/
+					trending_analytics/
+
+
+
