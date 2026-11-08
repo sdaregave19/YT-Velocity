@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # YouTube Data Engineering Pipeline on AWS
 ## Architecture
 
